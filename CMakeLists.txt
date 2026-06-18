@@ -16,6 +16,8 @@ qt_add_executable(CubeJ1MqttAndroid
     src/CubeJClient.h
     src/DeviceDiscovery.cpp
     src/DeviceDiscovery.h
+    src/ThemeController.cpp
+    src/ThemeController.h
 )
 
 qt_add_qml_module(CubeJ1MqttAndroid

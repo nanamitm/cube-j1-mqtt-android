@@ -10,19 +10,19 @@ ApplicationWindow {
     title: "Cube J1 MQTT"
     color: palette.window
 
-    palette.window: "#f5f6f8"
-    palette.windowText: "#15171a"
-    palette.base: "#ffffff"
-    palette.alternateBase: "#eef1f4"
-    palette.text: "#15171a"
-    palette.button: "#eef1f4"
-    palette.buttonText: "#15171a"
+    palette.window: themeController.dark ? "#181b20" : "#f5f6f8"
+    palette.windowText: themeController.dark ? "#edf1f5" : "#15171a"
+    palette.base: themeController.dark ? "#22262d" : "#ffffff"
+    palette.alternateBase: themeController.dark ? "#2b3038" : "#eef1f4"
+    palette.text: themeController.dark ? "#edf1f5" : "#15171a"
+    palette.button: themeController.dark ? "#303640" : "#eef1f4"
+    palette.buttonText: themeController.dark ? "#edf1f5" : "#15171a"
     palette.highlight: "#1769aa"
     palette.highlightedText: "#ffffff"
-    palette.mid: "#c9ced6"
-    palette.dark: "#7a8491"
-    palette.light: "#ffffff"
-    palette.placeholderText: "#687180"
+    palette.mid: themeController.dark ? "#566170" : "#c9ced6"
+    palette.dark: themeController.dark ? "#111317" : "#7a8491"
+    palette.light: themeController.dark ? "#3a414c" : "#ffffff"
+    palette.placeholderText: themeController.dark ? "#a8b1bd" : "#687180"
 
     property var status: ({})
     property var values: ({})
@@ -32,6 +32,12 @@ ApplicationWindow {
     property string logName: ""
     property string message: ""
     property bool autoRefresh: true
+    property color panelColor: themeController.dark ? "#20242a" : "#ffffff"
+    property color chartBackground: themeController.dark ? "#242932" : "#fafafa"
+    property color chartGrid: themeController.dark ? "#3a414c" : "#d0d0d0"
+    property color chartText: themeController.dark ? "#dce3ea" : "#333333"
+    property color successColor: themeController.dark ? "#7bd88f" : "#2d6a4f"
+    property color errorColor: themeController.dark ? "#ff8a9a" : "crimson"
 
     function textValue(key, fallback) {
         var value = root.config[key]
@@ -93,6 +99,14 @@ ApplicationWindow {
             root.message = command + " accepted"
             if (command === "save")
                 cubeClient.fetchConfig()
+        }
+    }
+
+    Connections {
+        target: themeController
+
+        function onDarkChanged() {
+            powerChart.requestPaint()
         }
     }
 
@@ -178,7 +192,7 @@ ApplicationWindow {
         Label {
             visible: cubeClient.lastError.length > 0
             text: cubeClient.lastError
-            color: "crimson"
+            color: root.errorColor
             wrapMode: Text.Wrap
             Layout.fillWidth: true
         }
@@ -186,7 +200,7 @@ ApplicationWindow {
         Label {
             visible: root.message.length > 0
             text: root.message
-            color: "#2d6a4f"
+            color: root.successColor
             wrapMode: Text.Wrap
             Layout.fillWidth: true
         }
@@ -276,9 +290,9 @@ ApplicationWindow {
                             onPaint: {
                                 var ctx = getContext("2d")
                                 ctx.reset()
-                                ctx.fillStyle = "#fafafa"
+                                ctx.fillStyle = root.chartBackground
                                 ctx.fillRect(0, 0, width, height)
-                                ctx.strokeStyle = "#d0d0d0"
+                                ctx.strokeStyle = root.chartGrid
                                 ctx.lineWidth = 1
                                 for (var g = 1; g < 4; ++g) {
                                     var y = height * g / 4
@@ -307,7 +321,7 @@ ApplicationWindow {
                                 }
                                 ctx.stroke()
 
-                                ctx.fillStyle = "#333"
+                                ctx.fillStyle = root.chartText
                                 ctx.font = "12px sans-serif"
                                 ctx.fillText("max " + Math.round(maxValue) + " W", 8, 18)
                             }
@@ -433,6 +447,52 @@ ApplicationWindow {
                                         cubeClient.host = modelData.host
                                         cubeClient.port = modelData.port
                                         cubeClient.fetchStatus()
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    GroupBox {
+                        title: "Appearance"
+                        Layout.fillWidth: true
+
+                        RowLayout {
+                            anchors.fill: parent
+
+                            Label {
+                                text: "Theme"
+                            }
+
+                            ComboBox {
+                                id: themeModeBox
+                                textRole: "label"
+                                valueRole: "value"
+                                Layout.fillWidth: true
+                                model: [
+                                    { "label": "System", "value": "system" },
+                                    { "label": "Light", "value": "light" },
+                                    { "label": "Dark", "value": "dark" }
+                                ]
+                                Component.onCompleted: {
+                                    for (var i = 0; i < model.length; ++i) {
+                                        if (model[i].value === themeController.mode) {
+                                            currentIndex = i
+                                            break
+                                        }
+                                    }
+                                }
+                                onActivated: themeController.mode = currentValue
+
+                                Connections {
+                                    target: themeController
+                                    function onModeChanged() {
+                                        for (var i = 0; i < themeModeBox.model.length; ++i) {
+                                            if (themeModeBox.model[i].value === themeController.mode) {
+                                                themeModeBox.currentIndex = i
+                                                break
+                                            }
+                                        }
                                     }
                                 }
                             }

@@ -7,6 +7,7 @@ Qt 6/C++ Android client for Cube J1 MQTT.
 - Connect to the Cube J1 Web UI API over HTTP Basic authentication.
 - Display `/status.json`.
 - Fetch logs from `/mqtt_bridge.log` and `/serial.log`.
+- Switch between system, light, and dark UI themes.
 - Keep device discovery behind `DeviceDiscovery` so Android `NsdManager` can be wired in without touching the UI.
 
 ## Discovery Plan
