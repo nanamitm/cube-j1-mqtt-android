@@ -178,6 +178,7 @@ ApplicationWindow {
 
         function onDarkChanged() {
             powerChart.requestPaint()
+            refreshIcon.requestPaint()
         }
     }
 
@@ -237,8 +238,39 @@ ApplicationWindow {
 
             ToolButton {
                 visible: !root.showSettings
-                text: "⟲"
                 onClicked: cubeClient.fetchStatus()
+
+                contentItem: Canvas {
+                    id: refreshIcon
+                    implicitWidth: 16
+                    implicitHeight: 16
+
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        ctx.reset()
+                        var cx = width / 2
+                        var cy = height / 2
+                        var r = Math.min(width, height) / 2 - 3
+
+                        ctx.strokeStyle = palette.buttonText
+                        ctx.lineWidth = 2
+                        ctx.beginPath()
+                        ctx.arc(cx, cy, r, -Math.PI * 0.85, Math.PI * 0.6, false)
+                        ctx.stroke()
+
+                        var endAngle = Math.PI * 0.6
+                        var ex = cx + r * Math.cos(endAngle)
+                        var ey = cy + r * Math.sin(endAngle)
+                        var headLen = 5
+                        ctx.beginPath()
+                        ctx.moveTo(ex, ey)
+                        ctx.lineTo(ex - headLen * Math.cos(endAngle - 0.5), ey - headLen * Math.sin(endAngle - 0.5))
+                        ctx.lineTo(ex - headLen * Math.cos(endAngle + 0.6), ey - headLen * Math.sin(endAngle + 0.6))
+                        ctx.closePath()
+                        ctx.fillStyle = palette.buttonText
+                        ctx.fill()
+                    }
+                }
             }
 
             ToolButton {
@@ -597,7 +629,10 @@ ApplicationWindow {
                     width: parent.width
                     spacing: 10
 
-                    RowLayout {
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 8
+
                         Button {
                             text: "Load Config"
                             onClicked: cubeClient.fetchConfig()
@@ -615,33 +650,33 @@ ApplicationWindow {
                         }
                     }
 
-                    GridLayout {
-                        columns: 2
+                    ColumnLayout {
                         Layout.fillWidth: true
+                        spacing: 2
 
-                        Label { text: "B-route ID" }
+                        Label { text: "B-route ID"; font.pixelSize: 12; color: palette.placeholderText }
                         TextField { id: brIdField; text: root.textValue("br_id"); Layout.fillWidth: true }
-                        Label { text: "B-route Password" }
+                        Label { text: "B-route Password"; font.pixelSize: 12; color: palette.placeholderText }
                         TextField { id: brPwdField; text: root.textValue("br_pwd"); echoMode: TextInput.Password; Layout.fillWidth: true }
-                        Label { text: "MQTT Host" }
+                        Label { text: "MQTT Host"; font.pixelSize: 12; color: palette.placeholderText }
                         TextField { id: mqttHostField; text: root.textValue("mqtt_host"); Layout.fillWidth: true }
-                        Label { text: "MQTT Port" }
+                        Label { text: "MQTT Port"; font.pixelSize: 12; color: palette.placeholderText }
                         SpinBox { id: mqttPortField; from: 1; to: 65535; value: root.numberValue("mqtt_port", 1883); Layout.fillWidth: true }
-                        Label { text: "MQTT User" }
+                        Label { text: "MQTT User"; font.pixelSize: 12; color: palette.placeholderText }
                         TextField { id: mqttUserField; text: root.textValue("mqtt_user"); Layout.fillWidth: true }
-                        Label { text: "MQTT Password" }
+                        Label { text: "MQTT Password"; font.pixelSize: 12; color: palette.placeholderText }
                         TextField { id: mqttPassField; text: root.textValue("mqtt_pass"); echoMode: TextInput.Password; Layout.fillWidth: true }
-                        Label { text: "Device ID" }
+                        Label { text: "Device ID"; font.pixelSize: 12; color: palette.placeholderText }
                         TextField { id: deviceIdField; text: root.textValue("device_id", "cubej1"); Layout.fillWidth: true }
-                        Label { text: "Serial Port" }
+                        Label { text: "Serial Port"; font.pixelSize: 12; color: palette.placeholderText }
                         TextField { id: serialPortField; text: root.textValue("serial_port", "/dev/ttyS1"); Layout.fillWidth: true }
-                        Label { text: "Poll Interval" }
+                        Label { text: "Poll Interval"; font.pixelSize: 12; color: palette.placeholderText }
                         SpinBox { id: pollIntervalField; from: 1; to: 3600; value: root.numberValue("poll_interval", 60); Layout.fillWidth: true }
-                        Label { text: "Web Port" }
+                        Label { text: "Web Port"; font.pixelSize: 12; color: palette.placeholderText }
                         SpinBox { id: webPortField; from: 1; to: 65535; value: root.numberValue("web_port", 8080); Layout.fillWidth: true }
-                        Label { text: "Web User" }
+                        Label { text: "Web User"; font.pixelSize: 12; color: palette.placeholderText }
                         TextField { id: webUserField; text: root.textValue("web_user", "admin"); Layout.fillWidth: true }
-                        Label { text: "Web Password" }
+                        Label { text: "Web Password"; font.pixelSize: 12; color: palette.placeholderText }
                         TextField { id: webPassField; text: root.textValue("web_pass", "cubej1"); echoMode: TextInput.Password; Layout.fillWidth: true }
                     }
                 }
