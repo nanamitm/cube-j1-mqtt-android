@@ -164,8 +164,13 @@ ApplicationWindow {
             Layout.fillWidth: true
 
             Button {
-                text: "Find"
-                onClicked: deviceDiscovery.start()
+                text: deviceDiscovery.scanning ? "Stop" : "Find"
+                onClicked: {
+                    if (deviceDiscovery.scanning)
+                        deviceDiscovery.stop()
+                    else
+                        deviceDiscovery.start()
+                }
             }
 
             Button {
@@ -433,9 +438,19 @@ ApplicationWindow {
                             anchors.fill: parent
 
                             Button {
-                                text: deviceDiscovery.scanning ? "Scanning..." : "Find Cube J1"
-                                enabled: !deviceDiscovery.scanning
-                                onClicked: deviceDiscovery.start()
+                                text: deviceDiscovery.scanning ? "Stop discovery" : "Find Cube J1"
+                                onClicked: {
+                                    if (deviceDiscovery.scanning)
+                                        deviceDiscovery.stop()
+                                    else
+                                        deviceDiscovery.start()
+                                }
+                            }
+
+                            Label {
+                                visible: !deviceDiscovery.scanning && deviceDiscovery.devices.length === 0
+                                text: "No devices discovered yet"
+                                color: palette.placeholderText
                             }
 
                             Repeater {
@@ -444,11 +459,37 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: modelData.name + "  " + modelData.host + ":" + modelData.port
                                     onClicked: {
+                                        tabs.currentIndex = 0
                                         cubeClient.host = modelData.host
                                         cubeClient.port = modelData.port
                                         cubeClient.fetchStatus()
                                     }
                                 }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+
+                                Label {
+                                    text: "Discovery Log"
+                                    Layout.fillWidth: true
+                                    color: palette.placeholderText
+                                }
+
+                                Button {
+                                    text: "Clear"
+                                    onClicked: deviceDiscovery.clearDebugLog()
+                                }
+                            }
+
+                            TextArea {
+                                text: deviceDiscovery.debugLog
+                                readOnly: true
+                                wrapMode: TextArea.WrapAnywhere
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 180
+                                placeholderText: "Discovery events will appear here"
+                                font.family: "monospace"
                             }
                         }
                     }

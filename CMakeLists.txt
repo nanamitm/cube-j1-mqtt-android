@@ -38,3 +38,10 @@ target_link_libraries(CubeJ1MqttAndroid
 set_target_properties(CubeJ1MqttAndroid PROPERTIES
     QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android"
 )
+
+if(ANDROID)
+    set_property(TARGET CubeJ1MqttAndroid APPEND PROPERTY
+        QT_ANDROID_PACKAGE_SOURCE_FILES
+            android/src/net/nanami/cubej1mqtt/CubeDiscovery.java
+    )
+endif()
