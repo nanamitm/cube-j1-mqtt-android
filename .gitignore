@@ -4,3 +4,7 @@ build*/
 CMakeUserPresets.json
 *.user
 *.user.*
+
+# Android signing — never commit these
+android-signing.properties
+keystore/

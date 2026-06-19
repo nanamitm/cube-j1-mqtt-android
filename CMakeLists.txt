@@ -37,7 +37,22 @@ target_link_libraries(CubeJ1MqttAndroid
 
 set_target_properties(CubeJ1MqttAndroid PROPERTIES
     QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android"
+    QT_ANDROID_VERSION_NAME "${PROJECT_VERSION}"
+    QT_ANDROID_VERSION_CODE 1
 )
+
+# Qt-level APK signing for Release builds.
+# Set QT_ANDROID_KEYSTORE_PATH (and related env vars) before cmake configure to enable;
+# build_android_release.ps1 does this for you from android-signing.properties.
+if(CMAKE_BUILD_TYPE STREQUAL "Release" AND DEFINED ENV{QT_ANDROID_KEYSTORE_PATH})
+    set_target_properties(CubeJ1MqttAndroid PROPERTIES
+        QT_ANDROID_SIGN_APK              TRUE
+        QT_ANDROID_KEYSTORE_PATH         $ENV{QT_ANDROID_KEYSTORE_PATH}
+        QT_ANDROID_KEYSTORE_ALIAS        $ENV{QT_ANDROID_KEYSTORE_ALIAS}
+        QT_ANDROID_KEYSTORE_STORE_PASS   $ENV{QT_ANDROID_KEYSTORE_STORE_PASS}
+        QT_ANDROID_KEYSTORE_KEY_PASS     $ENV{QT_ANDROID_KEYSTORE_KEY_PASS}
+    )
+endif()
 
 if(ANDROID)
     set_property(TARGET CubeJ1MqttAndroid APPEND PROPERTY
