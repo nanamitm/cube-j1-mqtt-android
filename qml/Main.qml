@@ -28,10 +28,14 @@ ApplicationWindow {
     property var values: ({})
     property var config: ({})
     property var powerSamples: []
+    property var currentRSamples: []
+    property var currentTSamples: []
     property string logText: ""
     property string logName: ""
     property string message: ""
     property bool autoRefresh: true
+    property bool showSettings: false
+    property bool autoConnectDone: false
     property color panelColor: themeController.dark ? "#20242a" : "#ffffff"
     property color chartBackground: themeController.dark ? "#242932" : "#fafafa"
     property color chartGrid: themeController.dark ? "#3a414c" : "#d0d0d0"
@@ -49,6 +53,63 @@ ApplicationWindow {
     function numberValue(key, fallback) {
         var value = Number(root.config[key])
         return isNaN(value) ? fallback : value
+    }
+
+    function formatKwh(value) {
+        if (value === undefined || value === null || value === "")
+            return "-"
+        var num = Number(value)
+        if (isNaN(num))
+            return "-"
+        return (Math.floor(num * 1000) / 1000).toFixed(3)
+    }
+
+    function pushSample(samples, value) {
+        var next = samples.slice()
+        next.push(value)
+        while (next.length > 60)
+            next.shift()
+        return next
+    }
+
+    function combinedRange(seriesList) {
+        var minValue = null
+        var maxValue = null
+        for (var s = 0; s < seriesList.length; ++s) {
+            var samples = seriesList[s]
+            for (var i = 0; i < samples.length; ++i) {
+                if (minValue === null || samples[i] < minValue)
+                    minValue = samples[i]
+                if (maxValue === null || samples[i] > maxValue)
+                    maxValue = samples[i]
+            }
+        }
+        if (minValue === null) {
+            minValue = 0
+            maxValue = 1
+        }
+        var range = maxValue - minValue
+        if (range < 1e-6)
+            range = 1
+        return { "min": minValue, "range": range }
+    }
+
+    function paintSeries(ctx, samples, color, width, height, minValue, range) {
+        if (samples.length < 2)
+            return
+
+        ctx.strokeStyle = color
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        for (var p = 0; p < samples.length; ++p) {
+            var x = width * p / (samples.length - 1)
+            var py = height - ((samples[p] - minValue) / range) * (height - 12) - 6
+            if (p === 0)
+                ctx.moveTo(x, py)
+            else
+                ctx.lineTo(x, py)
+        }
+        ctx.stroke()
     }
 
     function saveConfigFromFields() {
@@ -69,20 +130,30 @@ ApplicationWindow {
         })
     }
 
+    function retryAutoDiscovery() {
+        root.autoConnectDone = false
+        deviceDiscovery.start()
+        discoveryTimeoutTimer.restart()
+    }
+
+    Component.onCompleted: {
+        deviceDiscovery.start()
+        discoveryTimeoutTimer.start()
+    }
+
     Connections {
         target: cubeClient
 
         function onStatusReceived(s) {
             root.status = s
             root.values = s.last_values || {}
-            if (root.values.power_w !== undefined) {
-                var next = root.powerSamples.slice()
-                next.push(Number(root.values.power_w))
-                while (next.length > 60)
-                    next.shift()
-                root.powerSamples = next
-                powerChart.requestPaint()
-            }
+            if (root.values.power_w !== undefined)
+                root.powerSamples = root.pushSample(root.powerSamples, Number(root.values.power_w))
+            if (root.values.current_r_a !== undefined)
+                root.currentRSamples = root.pushSample(root.currentRSamples, Number(root.values.current_r_a))
+            if (root.values.current_t_a !== undefined)
+                root.currentTSamples = root.pushSample(root.currentTSamples, Number(root.values.current_t_a))
+            powerChart.requestPaint()
         }
 
         function onConfigReceived(c) {
@@ -110,6 +181,31 @@ ApplicationWindow {
         }
     }
 
+    Connections {
+        target: deviceDiscovery
+
+        function onDevicesChanged() {
+            if (root.autoConnectDone || deviceDiscovery.devices.length === 0)
+                return
+            var device = deviceDiscovery.devices[0]
+            root.autoConnectDone = true
+            discoveryTimeoutTimer.stop()
+            deviceDiscovery.stop()
+            cubeClient.host = device.host
+            cubeClient.port = device.port
+            cubeClient.fetchStatus()
+        }
+    }
+
+    Timer {
+        id: discoveryTimeoutTimer
+        interval: 8000
+        onTriggered: {
+            if (!root.autoConnectDone)
+                deviceDiscovery.stop()
+        }
+    }
+
     Timer {
         interval: 5000
         running: root.autoRefresh
@@ -118,80 +214,77 @@ ApplicationWindow {
         onTriggered: cubeClient.fetchStatus()
     }
 
+    header: ToolBar {
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 16
+            anchors.rightMargin: 4
+
+            Label {
+                text: root.showSettings ? "Settings" : "Cube J1 MQTT"
+                font.bold: true
+                font.pixelSize: 18
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+            }
+
+            BusyIndicator {
+                visible: !root.showSettings && (cubeClient.busy || deviceDiscovery.scanning)
+                running: visible
+                implicitWidth: 24
+                implicitHeight: 24
+            }
+
+            ToolButton {
+                visible: !root.showSettings
+                text: "⟲"
+                onClicked: cubeClient.fetchStatus()
+            }
+
+            ToolButton {
+                text: root.showSettings ? "←" : "⚙"
+                onClicked: root.showSettings = !root.showSettings
+            }
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 16
         spacing: 12
+        visible: !root.showSettings
 
         RowLayout {
             Layout.fillWidth: true
+            spacing: 8
 
-            TextField {
-                text: cubeClient.host
-                placeholderText: "cubej1.local"
+            Label {
                 Layout.fillWidth: true
-                onEditingFinished: cubeClient.host = text
-            }
-
-            SpinBox {
-                from: 1
-                to: 65535
-                value: cubeClient.port
-                onValueModified: cubeClient.port = value
-            }
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-
-            TextField {
-                text: cubeClient.user
-                placeholderText: "User"
-                Layout.fillWidth: true
-                onEditingFinished: cubeClient.user = text
-            }
-
-            TextField {
-                text: cubeClient.password
-                placeholderText: "Password"
-                echoMode: TextInput.Password
-                Layout.fillWidth: true
-                onEditingFinished: cubeClient.password = text
-            }
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-
-            Button {
-                text: deviceDiscovery.scanning ? "Stop" : "Find"
-                onClicked: {
+                wrapMode: Text.Wrap
+                color: palette.placeholderText
+                text: {
                     if (deviceDiscovery.scanning)
-                        deviceDiscovery.stop()
-                    else
-                        deviceDiscovery.start()
+                        return "Searching for Cube J1..."
+                    if (!root.autoConnectDone)
+                        return "Cube J1 not found on the network"
+                    var name = status.device_id || cubeClient.host
+                    return name + "  (" + cubeClient.host + ":" + cubeClient.port + ")"
                 }
             }
 
             Button {
-                text: "Refresh"
-                onClicked: cubeClient.fetchStatus()
+                visible: !deviceDiscovery.scanning && !root.autoConnectDone
+                text: "Retry"
+                onClicked: root.retryAutoDiscovery()
             }
+        }
 
-            CheckBox {
-                text: "Auto"
-                checked: root.autoRefresh
-                onToggled: root.autoRefresh = checked
-            }
-
-            BusyIndicator {
-                running: cubeClient.busy
-                visible: cubeClient.busy
-                implicitWidth: 28
-                implicitHeight: 28
-            }
-
-            Item { Layout.fillWidth: true }
+        Label {
+            visible: !root.autoConnectDone && !deviceDiscovery.scanning
+            text: "Open Settings (⚙) to enter the address manually"
+            color: palette.placeholderText
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
         }
 
         Label {
@@ -201,6 +294,184 @@ ApplicationWindow {
             wrapMode: Text.Wrap
             Layout.fillWidth: true
         }
+
+        ScrollView {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            contentWidth: availableWidth
+
+            ColumnLayout {
+                width: parent.width
+                spacing: 12
+
+                GroupBox {
+                    title: "Connection"
+                    Layout.fillWidth: true
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 8
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 18
+
+                            RowLayout {
+                                spacing: 6
+                                Rectangle {
+                                    width: 10; height: 10; radius: 5
+                                    color: status.mqtt_connected ? root.successColor : root.errorColor
+                                }
+                                Label { text: "MQTT" }
+                            }
+
+                            RowLayout {
+                                spacing: 6
+                                Rectangle {
+                                    width: 10; height: 10; radius: 5
+                                    color: status.wisun_connected ? root.successColor : root.errorColor
+                                }
+                                Label { text: "Wi-SUN" }
+                            }
+
+                            RowLayout {
+                                spacing: 6
+                                Rectangle {
+                                    width: 10; height: 10; radius: 5
+                                    color: status.configuration_required ? root.errorColor : root.successColor
+                                }
+                                Label { text: status.configuration_required ? "Config required" : "Ready" }
+                            }
+
+                            Item { Layout.fillWidth: true }
+                        }
+
+                        Label {
+                            text: (status.device_id || "-") + "  ·  Updated " + (status.updated_at || "-")
+                            color: palette.placeholderText
+                            elide: Text.ElideRight
+                            Layout.fillWidth: true
+                        }
+
+                        Label {
+                            visible: !!status.last_error
+                            text: status.last_error
+                            color: root.errorColor
+                            wrapMode: Text.Wrap
+                            Layout.fillWidth: true
+                        }
+                    }
+                }
+
+                GroupBox {
+                    title: "Measurements"
+                    Layout.fillWidth: true
+
+                    GridLayout {
+                        columns: 2
+                        anchors.fill: parent
+
+                        Label { text: "Power" }
+                        Label { text: values.power_w !== undefined ? values.power_w + " W" : "-" }
+                        Label { text: "Energy" }
+                        RowLayout {
+                            spacing: 16
+                            Label { text: "Fwd " + root.formatKwh(values.energy_forward_kwh) + " kWh" }
+                            Label { text: "Rev " + root.formatKwh(values.energy_reverse_kwh) + " kWh" }
+                        }
+                        Label { text: "Measured" }
+                        Label { text: status.last_measurement_at || "-" }
+                    }
+                }
+
+                GroupBox {
+                    title: "Trends"
+                    Layout.fillWidth: true
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 8
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 16
+
+                            RowLayout {
+                                spacing: 6
+                                Rectangle { width: 10; height: 10; radius: 5; color: "#1769aa" }
+                                Label {
+                                    font.pixelSize: 12
+                                    text: "Power " + (values.power_w !== undefined ? values.power_w + "W" : "-")
+                                }
+                            }
+
+                            RowLayout {
+                                spacing: 6
+                                Rectangle { width: 10; height: 10; radius: 5; color: "#e8871e" }
+                                Label {
+                                    font.pixelSize: 12
+                                    text: "R " + (values.current_r_a !== undefined ? values.current_r_a + "A" : "-")
+                                }
+                            }
+
+                            RowLayout {
+                                spacing: 6
+                                Rectangle { width: 10; height: 10; radius: 5; color: "#8e44ad" }
+                                Label {
+                                    font.pixelSize: 12
+                                    text: "T " + (values.current_t_a !== undefined ? values.current_t_a + "A" : "-")
+                                }
+                            }
+
+                            Item { Layout.fillWidth: true }
+                        }
+
+                        Label {
+                            text: "R/T scaled ×100 to align with Power"
+                            font.pixelSize: 11
+                            color: palette.placeholderText
+                        }
+
+                        Canvas {
+                            id: powerChart
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 180
+
+                            onPaint: {
+                                var ctx = getContext("2d")
+                                ctx.reset()
+                                ctx.fillStyle = root.chartBackground
+                                ctx.fillRect(0, 0, width, height)
+                                ctx.strokeStyle = root.chartGrid
+                                ctx.lineWidth = 1
+                                for (var g = 1; g < 4; ++g) {
+                                    var y = height * g / 4
+                                    ctx.beginPath()
+                                    ctx.moveTo(0, y)
+                                    ctx.lineTo(width, y)
+                                    ctx.stroke()
+                                }
+
+                                var scaledR = root.currentRSamples.map(function(v) { return v * 100 })
+                                var scaledT = root.currentTSamples.map(function(v) { return v * 100 })
+                                var shared = root.combinedRange([root.powerSamples, scaledR, scaledT])
+
+                                root.paintSeries(ctx, root.powerSamples, "#1769aa", width, height, shared.min, shared.range)
+                                root.paintSeries(ctx, scaledR, "#e8871e", width, height, shared.min, shared.range)
+                                root.paintSeries(ctx, scaledT, "#8e44ad", width, height, shared.min, shared.range)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: 16
+        spacing: 12
+        visible: root.showSettings
 
         Label {
             visible: root.message.length > 0
@@ -214,7 +485,7 @@ ApplicationWindow {
             id: tabs
             Layout.fillWidth: true
 
-            TabButton { text: "Status" }
+            TabButton { text: "Connection" }
             TabButton { text: "Config" }
             TabButton { text: "Logs" }
             TabButton { text: "Maintenance" }
@@ -232,105 +503,89 @@ ApplicationWindow {
                     width: parent.width
                     spacing: 12
 
-                    GroupBox {
-                        title: "Connection"
+                    RowLayout {
                         Layout.fillWidth: true
 
-                        GridLayout {
-                            columns: 2
-                            anchors.fill: parent
+                        TextField {
+                            text: cubeClient.host
+                            placeholderText: "cubej1.local"
+                            Layout.fillWidth: true
+                            onEditingFinished: {
+                                cubeClient.host = text
+                                root.autoConnectDone = true
+                            }
+                        }
 
-                            Label { text: "MQTT" }
-                            Label { text: status.mqtt_connected ? "Connected" : "Disconnected" }
-                            Label { text: "Wi-SUN" }
-                            Label { text: status.wisun_connected ? "Connected" : "Disconnected" }
-                            Label { text: "Required" }
-                            Label { text: status.configuration_required ? "Configuration required" : "Ready" }
-                            Label { text: "Device ID" }
-                            Label { text: status.device_id || "-" }
-                            Label { text: "Updated" }
-                            Label { text: status.updated_at || "-" }
-                            Label { text: "Last Error" }
-                            Label {
-                                text: status.last_error || "-"
-                                wrapMode: Text.Wrap
-                                Layout.fillWidth: true
+                        SpinBox {
+                            from: 1
+                            to: 65535
+                            value: cubeClient.port
+                            onValueModified: {
+                                cubeClient.port = value
+                                root.autoConnectDone = true
                             }
                         }
                     }
 
-                    GroupBox {
-                        title: "Measurements"
+                    RowLayout {
                         Layout.fillWidth: true
 
-                        GridLayout {
-                            columns: 2
-                            anchors.fill: parent
+                        TextField {
+                            text: cubeClient.user
+                            placeholderText: "User"
+                            Layout.fillWidth: true
+                            onEditingFinished: cubeClient.user = text
+                        }
 
-                            Label { text: "Power" }
-                            Label { text: values.power_w !== undefined ? values.power_w + " W" : "-" }
-                            Label { text: "Forward Energy" }
-                            Label { text: values.energy_forward_kwh !== undefined ? values.energy_forward_kwh + " kWh" : "-" }
-                            Label { text: "Reverse Energy" }
-                            Label { text: values.energy_reverse_kwh !== undefined ? values.energy_reverse_kwh + " kWh" : "-" }
-                            Label { text: "Current R" }
-                            Label { text: values.current_r_a !== undefined ? values.current_r_a + " A" : "-" }
-                            Label { text: "Current T" }
-                            Label { text: values.current_t_a !== undefined ? values.current_t_a + " A" : "-" }
-                            Label { text: "Measured" }
-                            Label { text: status.last_measurement_at || "-" }
+                        TextField {
+                            text: cubeClient.password
+                            placeholderText: "Password"
+                            echoMode: TextInput.Password
+                            Layout.fillWidth: true
+                            onEditingFinished: cubeClient.password = text
                         }
                     }
 
-                    GroupBox {
-                        title: "Power Trend"
+                    RowLayout {
                         Layout.fillWidth: true
 
-                        Canvas {
-                            id: powerChart
-                            height: 180
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-
-                            onPaint: {
-                                var ctx = getContext("2d")
-                                ctx.reset()
-                                ctx.fillStyle = root.chartBackground
-                                ctx.fillRect(0, 0, width, height)
-                                ctx.strokeStyle = root.chartGrid
-                                ctx.lineWidth = 1
-                                for (var g = 1; g < 4; ++g) {
-                                    var y = height * g / 4
-                                    ctx.beginPath()
-                                    ctx.moveTo(0, y)
-                                    ctx.lineTo(width, y)
-                                    ctx.stroke()
-                                }
-                                if (root.powerSamples.length < 2)
-                                    return
-
-                                var maxValue = 1
-                                for (var i = 0; i < root.powerSamples.length; ++i)
-                                    maxValue = Math.max(maxValue, root.powerSamples[i])
-
-                                ctx.strokeStyle = "#1769aa"
-                                ctx.lineWidth = 2
-                                ctx.beginPath()
-                                for (var p = 0; p < root.powerSamples.length; ++p) {
-                                    var x = width * p / (root.powerSamples.length - 1)
-                                    var py = height - (root.powerSamples[p] / maxValue) * (height - 12) - 6
-                                    if (p === 0)
-                                        ctx.moveTo(x, py)
-                                    else
-                                        ctx.lineTo(x, py)
-                                }
-                                ctx.stroke()
-
-                                ctx.fillStyle = root.chartText
-                                ctx.font = "12px sans-serif"
-                                ctx.fillText("max " + Math.round(maxValue) + " W", 8, 18)
+                        Button {
+                            text: deviceDiscovery.scanning ? "Stop" : "Find"
+                            onClicked: {
+                                if (deviceDiscovery.scanning)
+                                    deviceDiscovery.stop()
+                                else
+                                    deviceDiscovery.start()
                             }
                         }
+
+                        Button {
+                            text: "Refresh"
+                            onClicked: cubeClient.fetchStatus()
+                        }
+
+                        CheckBox {
+                            text: "Auto"
+                            checked: root.autoRefresh
+                            onToggled: root.autoRefresh = checked
+                        }
+
+                        BusyIndicator {
+                            running: cubeClient.busy
+                            visible: cubeClient.busy
+                            implicitWidth: 28
+                            implicitHeight: 28
+                        }
+
+                        Item { Layout.fillWidth: true }
+                    }
+
+                    Label {
+                        visible: cubeClient.lastError.length > 0
+                        text: cubeClient.lastError
+                        color: root.errorColor
+                        wrapMode: Text.Wrap
+                        Layout.fillWidth: true
                     }
                 }
             }
@@ -459,10 +714,12 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: modelData.name + "  " + modelData.host + ":" + modelData.port
                                     onClicked: {
-                                        tabs.currentIndex = 0
+                                        root.autoConnectDone = true
+                                        deviceDiscovery.stop()
                                         cubeClient.host = modelData.host
                                         cubeClient.port = modelData.port
                                         cubeClient.fetchStatus()
+                                        root.showSettings = false
                                     }
                                 }
                             }
