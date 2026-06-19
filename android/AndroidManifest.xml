@@ -18,7 +18,8 @@
     <application
         android:name="org.qtproject.qt.android.bindings.QtApplication"
         android:hardwareAccelerated="true"
-        android:icon="-- %%INSERT_APP_ICON%% --"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:enableOnBackInvokedCallback="false"
         android:allowBackup="true"
         android:fullBackupOnly="false"
